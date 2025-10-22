@@ -1,0 +1,83 @@
+# ============================================
+# ANDROID STUDIO / KOTLIN PROJECT .GITIGNORE
+# ============================================
+
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local Gradle properties (se pueden regenerar)
+local.properties
+
+# Android Studio
+.idea/
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/shelf/
+.idea/deploymentTargetDropDown.xml
+.idea/deploymentTargetSelector.xml
+
+# Keystores (asegúrate de guardar tus claves seguras fuera del repo)
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+
+# Generated files
+captures/
+outputs/
+*.ap_
+*.aab
+*.apk
+*.dex
+*.class
+
+# KAPT / KSP
+kapt/
+**/build/tmp/kapt/
+**/build/generated/
+**/build/ksp/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.trace
+
+# Android profiling / test outputs
+*.hprof
+*.orig
+*.tmp
+.idea/httpRequests/
+
+# Jetpack Compose Preview cache
+**/.compose-build/
+
+# Local test reports
+**/reports/
+**/test-results/
+**/jacoco/
+
+# NDK / CMake / external
+.cxx/
+.externalNativeBuild/
+
+# Firebase / Google Services (mantén el JSON fuera si usas entornos distintos)
+google-services.json
+google-services.plist
+
+# Local signing confi
