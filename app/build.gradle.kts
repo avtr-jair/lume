@@ -77,4 +77,7 @@ dependencies {
     kapt(libs.hilt.android.compiler)
     //SECURITY
     implementation(libs.androidx.security.crypto)
+    //ROOM
+    implementation(libs.androidx.room.runtime)
+    kapt(libs.androidx.room.compiler)
 }
