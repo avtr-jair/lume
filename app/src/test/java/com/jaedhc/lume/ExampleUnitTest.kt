@@ -1,4 +1,4 @@
-package com.example.lume
+package com.jaedhc.lume
 
 import org.junit.Test
 

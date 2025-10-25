@@ -1,4 +1,4 @@
-package com.example.lume.view.receiver
+package com.jaedhc.lume.view.receiver
 // ShareReceiverScreen.kt
 import android.content.ContentResolver
 import android.graphics.Bitmap

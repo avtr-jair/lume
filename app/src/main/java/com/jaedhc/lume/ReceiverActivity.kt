@@ -1,4 +1,4 @@
-package com.example.lume
+package com.jaedhc.lume
 
 import android.content.Intent
 import android.net.Uri
@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,9 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.example.lume.view.receiver.ShareReceiverScreen
+import com.jaedhc.lume.view.receiver.ShareReceiverScreen
 
 class ReceiverActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -2,14 +2,16 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-kapt")
+    id("com.google.dagger.hilt.android")
 }
 
 android {
-    namespace = "com.example.lume"
+    namespace = "com.jaedhc.lume"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.lume"
+        applicationId = "com.jaedhc.lume"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -19,8 +21,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "ENCRYPTION_ENABLED", "false")
+        }
         release {
-            isMinifyEnabled = false
+            buildConfigField("boolean", "ENCRYPTION_ENABLED", "true")
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -36,6 +42,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -65,4 +72,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+    //DAGGER HILT
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.android.compiler)
+    //SECURITY
+    implementation(libs.androidx.security.crypto)
 }
