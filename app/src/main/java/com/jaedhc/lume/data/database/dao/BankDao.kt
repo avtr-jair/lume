@@ -8,7 +8,7 @@ import com.jaedhc.lume.data.database.entities.BankEntity
 
 @Dao
 interface BankDao{
-    @Insert(onConflict = OnConflictStrategy.ABORT)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(bank: BankEntity): Long
 
     @Query("SELECT * FROM bank ORDER BY identifier")

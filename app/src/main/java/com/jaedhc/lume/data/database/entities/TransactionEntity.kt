@@ -74,7 +74,7 @@ data class TransactionEntity(
     val sourceAccId: Long?,         // ← FK a account.id
     val sourceAccBankId: Long?,     // ← denormalizado para filtro rápido por banco
 
-    val hashMerchant: String,       // UNIQUE (idempotencia)
+    val hashMerchant: String?,       // UNIQUE (idempotencia)
     val createdAt: Date,
     val updatedAt: Date
 )

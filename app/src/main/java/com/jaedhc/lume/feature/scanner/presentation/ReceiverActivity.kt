@@ -1,4 +1,4 @@
-package com.jaedhc.lume
+package com.jaedhc.lume.feature.scanner.presentation
 
 import android.content.Intent
 import android.net.Uri
@@ -14,8 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.jaedhc.lume.view.receiver.ShareReceiverScreen
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class ReceiverActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,7 +33,8 @@ class ReceiverActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 handleShareIntent(intent)?.let { uris = it }
                     ?: run {
-                        Toast.makeText(ctx, "No hay imágenes para procesar", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "No hay imágenes para procesar", Toast.LENGTH_SHORT)
+                            .show()
                         finish()
                     }
             }

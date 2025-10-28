@@ -8,7 +8,7 @@ import com.jaedhc.lume.data.database.entities.CategoryEntity
 
 @Dao
 interface CategoryDao {
-    @Insert(onConflict = OnConflictStrategy.ABORT)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(cat: CategoryEntity): Long
 
     @Query("SELECT * FROM category ORDER BY name")

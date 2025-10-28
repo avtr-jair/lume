@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     //DAGGER HILT
     implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.navigation.compose)
     kapt(libs.hilt.android.compiler)
     //SECURITY
     implementation(libs.androidx.security.crypto)
