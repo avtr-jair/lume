@@ -1,7 +1,10 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -16,6 +19,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Load local.properties
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localProperties.load(localPropertiesFile.inputStream())
+        }
+        
+        val baseUrl = localProperties.getProperty("BASE_URL") ?: "http://10.0.2.2:9100/"
+        buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
     }
 
     buildTypes {
@@ -36,23 +49,35 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
+    // --- Machine Learning ---
+    // ML Kit Text Recognition for OCR features (Scanning receipts)
     implementation(libs.text.recognition)
+
+    // --- Android Core & Lifecycle ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+
+    // --- Jetpack Compose ---
+    // BOM (Bill of Materials) to manage Compose versions automatically
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material3) // Material Design 3 components
+    
+    // --- Legacy / Compatibility ---
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+
+    // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -61,8 +86,24 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    // --- Third Party & Extensions ---
+    // Coil: Image loading for Compose (AsyncImage)
     implementation(libs.coil.compose)
-
+    // Navigation: Jetpack Navigation for Compose
+    implementation(libs.androidx.navigation.compose)
+    // Extended Icons: Additional Material Icons (Outlined, Filled, etc.)
+    implementation(libs.androidx.compose.material.icons.extended)
+    
+    // --- Coroutines ---
+    // Android specific coroutines (Dispatchers.Main)
     implementation(libs.kotlinx.coroutines.android)
+    // Play Services integration for Coroutines (Tasks API used by ML Kit)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // --- Networking & Serialization ---
+    implementation(libs.retrofit)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.retrofit.kotlin.serialization.converter)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging.interceptor)
 }
