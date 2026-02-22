@@ -9,7 +9,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [TransactionEntity::class, CategoryEntity::class, AccountEntity::class],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class LumeDatabase : RoomDatabase() {
@@ -28,6 +28,7 @@ abstract class LumeDatabase : RoomDatabase() {
                     "lume_database"
                 )
                 .addCallback(LumeDatabaseCallback(CoroutineScope(Dispatchers.IO)))
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
@@ -38,21 +39,24 @@ abstract class LumeDatabase : RoomDatabase() {
     private class LumeDatabaseCallback(
         private val scope: CoroutineScope
     ) : RoomDatabase.Callback() {
-        override fun onCreate(db: SupportSQLiteDatabase) {
-            super.onCreate(db)
+        override fun onOpen(db: SupportSQLiteDatabase) {
+            super.onOpen(db)
             INSTANCE?.let { database ->
                 scope.launch {
                     val catDao = database.transactionDao()
-                    val defaultCategories = listOf(
-                        CategoryEntity("comida", "Comida", null),
-                        CategoryEntity("transporte", "Transporte", null),
-                        CategoryEntity("entretenimiento", "Entretenimiento", null),
-                        CategoryEntity("salud", "Salud", null),
-                        CategoryEntity("finanzas", "Finanzas", null),
-                        CategoryEntity("servicios", "Servicios", null),
-                        CategoryEntity("otros", "Otros", null)
-                    )
-                    defaultCategories.forEach { catDao.insertCategory(it) }
+                    val count = catDao.getCategoriesSnapshot().size
+                    if (count == 0) {
+                        val defaultCategories = listOf(
+                            CategoryEntity("comida", "Comida", "Restaurant", "#FACC15", 0),
+                            CategoryEntity("transporte", "Transporte", "DirectionsCar", "#60A5FA", 1),
+                            CategoryEntity("entretenimiento", "Entretenimiento", "ConfirmationNumber", "#A78BFA", 2),
+                            CategoryEntity("salud", "Salud", "MedicalServices", "#F87171", 3),
+                            CategoryEntity("finanzas", "Finanzas", "Payments", "#34D399", 4),
+                            CategoryEntity("servicios", "Servicios", "Lightbulb", "#FB923C", 5),
+                            CategoryEntity("otros", "Otros", "Category", "#94A3B8", 6)
+                        )
+                        defaultCategories.forEach { catDao.insertCategory(it) }
+                    }
                 }
             }
         }

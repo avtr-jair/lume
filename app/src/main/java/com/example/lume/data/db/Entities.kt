@@ -8,7 +8,9 @@ import androidx.room.*
 data class CategoryEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val icon: String? = null
+    val icon: String? = null,
+    val color: String? = null,
+    val displayOrder: Int = 0
 )
 
 @Entity(
@@ -52,4 +54,13 @@ data class TransactionEntity(
     val isSubscription: Boolean,
     val note: String?,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class TransactionWithCategory(
+    @Embedded val transaction: TransactionEntity,
+    @Relation(
+        parentColumn = "categoryId",
+        entityColumn = "id"
+    )
+    val category: CategoryEntity?
 )

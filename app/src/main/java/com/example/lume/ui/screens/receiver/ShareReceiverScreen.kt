@@ -3,6 +3,7 @@ package com.example.lume.ui.screens.receiver
 import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,7 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.lume.data.Category
 import com.example.lume.data.OcrResult
 import com.example.lume.ui.components.ActiveGold
 import com.example.lume.ui.components.BackgroundDark
@@ -36,93 +36,95 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import com.example.lume.data.db.CategoryEntity
+import com.example.lume.ui.navigation.Screen
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShareReceiverScreen(
     uris: List<Uri>,
     onDone: () -> Unit,
+    onNavigate: (String) -> Unit = {},
     viewModel: ShareReceiverViewModel = viewModel()
 ) {
+    val sheetState = rememberModalBottomSheetState()
+    var showBottomSheet by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         viewModel.saveSuccess.collect {
             onDone()
         }
     }
 
-    // Top Bar is part of the custom design now
-    // The design shows "Revisar Transacción" and a close button.
-    
     Scaffold(
         containerColor = BackgroundDark,
         topBar = {
             ReviewTopBar(onClose = onDone)
         }
-        // BottomBar hoisted in AppNavigation, but we might want to hide it here if it covers the "Confirmar" button?
-        // For now we assume it's visible.
     ) { innerPadding ->
         if (uris.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                 Text("No images shared", color = Color.White)
             }
         } else {
-            // If multiple URIs, we show them in a list. 
-            // The design looks like a full screen view per item.
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
-                contentPadding = PaddingValues(bottom = 100.dp) // Space for floating button or bottom bar
+                contentPadding = PaddingValues(bottom = 100.dp)
             ) {
-                items(uris) { uri ->
-                    TransactionReviewCard(uri = uri, viewModel = viewModel)
-                    //Spacer(modifier = Modifier.height(24.dp))
+                items(
+                    items = uris,
+                    key = { it.toString() } // Stable key for Uris
+                ) { uri ->
+                    TransactionReviewCard(
+                        uri = uri, 
+                        viewModel = viewModel,
+                        onOpenSelector = { showBottomSheet = true }
+                    )
                 }
             }
         }
     }
-}
 
-@Composable
-fun ReviewTopBar(onClose: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp, 32.dp, 16.dp, 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-        }
-        Text(
-            text = "Revisar Transacción",
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold
+    if (showBottomSheet) {
+        val categories by viewModel.categories.collectAsState(initial = emptyList())
+        val selectedCategoryId by viewModel.selectedCategoryId.collectAsState()
+
+        CategorySelectorBottomSheet(
+            categories = categories,
+            selectedCategoryId = selectedCategoryId,
+            onClose = { showBottomSheet = false },
+            onCategorySelected = {
+                viewModel.onCategorySelected(it)
+                showBottomSheet = false
+            },
+            onAddNew = {
+                showBottomSheet = false
+                onNavigate(Screen.CreateCategory.route)
+            }
         )
-        IconButton(onClick = {}) {
-            Icon(Icons.Outlined.HelpOutline, contentDescription = "Help", tint = TextGray)
-        }
     }
 }
 
 @Composable
 fun TransactionReviewCard(
     uri: Uri,
-    viewModel: ShareReceiverViewModel
+    viewModel: ShareReceiverViewModel,
+    onOpenSelector: () -> Unit
 ) {
-    // Logic to process image
-    var localState by remember { mutableStateOf<ShareReceiverUiState>(ShareReceiverUiState.Idle) }
-    
     LaunchedEffect(uri) {
         viewModel.processImage(uri)
     }
 
     val uiState by viewModel.uiState.collectAsState()
-    
-    // In a real multi-item list, we'd filter or verify the result matches this URI. 
-    // For now taking the latest state as per previous agreement.
     
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -138,7 +140,7 @@ fun TransactionReviewCard(
             }
             is ShareReceiverUiState.Success -> {
                 val result = (uiState as ShareReceiverUiState.Success).result
-                TransactionForm(result, viewModel)
+                TransactionForm(result, viewModel, onOpenSelector)
             }
             else -> {}
         }
@@ -146,15 +148,81 @@ fun TransactionReviewCard(
 }
 
 @Composable
-fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
+fun TransactionTypeSwitch(
+    selectedType: String,
+    onTypeSelected: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .background(SurfaceDark, RoundedCornerShape(12.dp))
+            .padding(4.dp)
+    ) {
+        val isEgreso = selectedType == "egreso"
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isEgreso) ActiveGold else Color.Transparent)
+                .clickable { onTypeSelected("egreso") },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.TrendingDown, contentDescription = null, tint = if (isEgreso) Color.Black else Color(0xFFEF4444))
+                Text("Gasto", color = if (isEgreso) Color.Black else Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
+            }
+        }
+        val isIngreso = selectedType == "ingreso"
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isIngreso) ActiveGold else Color.Transparent)
+                .clickable { onTypeSelected("ingreso") },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = if (isIngreso) Color.Black else Color(0xFF2D9F24))
+                Text("Ingreso", color = if (isIngreso) Color.Black else Color(0xFF2D9F24), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+fun ReviewTopBar(onClose: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp, 32.dp, 16.dp, 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White) }
+        Text("Revisar Transacción", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        IconButton(onClick = {}) { Icon(Icons.Outlined.HelpOutline, contentDescription = "Help", tint = TextGray) }
+    }
+}
+
+@Composable
+fun TransactionForm(
+    result: OcrResult, 
+    viewModel: ShareReceiverViewModel,
+    onOpenSelector: () -> Unit
+) {
     var transactionType by remember { mutableStateOf(result.fields.type ?: "egreso") }
     var isSubscription by remember { mutableStateOf(result.fields.is_subscription) }
     var note by remember { mutableStateOf("") }
 
+    val categories by viewModel.categories.collectAsState(initial = emptyList())
+    val selectedId by viewModel.selectedCategoryId.collectAsState()
+    val selectedCategory = remember(categories, selectedId) { categories.find { it.id == selectedId } }
+
     val amount = result.fields.amount ?: 0.0
-    val currency = result.fields.currency ?: "MXN"
-    // Format amount
-    val formattedAmount = NumberFormat.getCurrencyInstance(Locale.US).format(amount)
+    val formattedAmount = remember(amount) { NumberFormat.getCurrencyInstance(Locale.US).format(amount) }
 
     // OCR Detected Badge
     Box(
@@ -170,20 +238,11 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
 
     // Amount
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = formattedAmount,
-            color = Color.White,
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Extraído de tu captura de pantalla",
-            color = Color(0xFF53535E),
-            fontSize = 14.sp
-        )
+        Text(text = formattedAmount, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+        Text(text = "Extraído de tu captura de pantalla", color = Color(0xFF53535E), fontSize = 14.sp)
     }
 
-    // Insight Chip (Placeholder)
+    // Insight Chip (MI)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -197,13 +256,8 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
         }
     }
 
-    // Type Switch (Gasto / Ingreso)
-    TransactionTypeSwitch(
-        selectedType = transactionType,
-        onTypeSelected = { transactionType = it }
-    )
+    TransactionTypeSwitch(selectedType = transactionType, onTypeSelected = { transactionType = it })
 
-    // Details Section
     Text(
         text = "DETALLES DE TRANSACCIÓN",
         color = TextGray,
@@ -225,10 +279,12 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
             showDivider = true
         )
         DetailRow(
-            icon = Icons.Outlined.ShoppingBag,
+            icon = getCategoryIcon(selectedCategory?.icon ?: "Category"),
+            iconColor = selectedCategory?.color?.let { try { Color(android.graphics.Color.parseColor(it)) } catch(e: Exception) { ActiveGold } } ?: ActiveGold,
             label = "CATEGORÍA",
-            value = result.category.name.capitalize(), // Using OCR category
-            showDivider = true
+            value = selectedCategory?.name ?: "Otros",
+            showDivider = true,
+            onClick = onOpenSelector
         )
         DetailRow(
             icon = Icons.Outlined.CalendarMonth,
@@ -273,13 +329,10 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
         )
     }
 
-    // Note Input
     OutlinedTextField(
         value = note,
         onValueChange = { note = it },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp),
+        modifier = Modifier.fillMaxWidth().height(100.dp),
         placeholder = { Text("Agregar una nota sobre esta transacción...", color = TextGray) },
         leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = TextGray) },
         colors = OutlinedTextFieldDefaults.colors(
@@ -292,16 +345,11 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
         shape = RoundedCornerShape(16.dp)
     )
 
-    // Confirm Button
     Button(
-        onClick = {
-            viewModel.saveTransaction(result, transactionType, isSubscription, note)
-        },
+        onClick = { viewModel.saveTransaction(result, transactionType, isSubscription, note) },
         colors = ButtonDefaults.buttonColors(containerColor = ActiveGold),
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
+        modifier = Modifier.fillMaxWidth().height(56.dp)
     ) {
         Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Black)
         Spacer(modifier = Modifier.width(8.dp))
@@ -312,82 +360,161 @@ fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
     Text("LUME AI • INTELIGENCIA FINANCIERA", color = Color(0xFF333333), fontSize = 10.sp, letterSpacing = 1.sp)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionTypeSwitch(
-    selectedType: String,
-    onTypeSelected: (String) -> Unit
+fun CategorySelectorBottomSheet(
+    categories: List<CategoryEntity>,
+    selectedCategoryId: String?,
+    onClose: () -> Unit,
+    onCategorySelected: (String) -> Unit,
+    onAddNew: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp)
-            .background(SurfaceDark, RoundedCornerShape(12.dp))
-            .padding(4.dp)
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCategories = remember(categories, searchQuery) { 
+        categories.filter { it.name.contains(searchQuery, ignoreCase = true) } 
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        containerColor = Color(0xFF16161D),
+        scrimColor = Color.Black.copy(alpha = 0.5f)
     ) {
-        // Gasto (egreso)
-        val isEgreso = selectedType == "egreso"
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Categoría", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onClose, modifier = Modifier.background(SurfaceDark, CircleShape).size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceDark),
+                placeholder = { Text("Buscar categoría...", color = TextGray) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextGray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    cursorColor = ActiveGold,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                singleLine = true
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.heightIn(max = 400.dp)
+            ) {
+                items(
+                    items = filteredCategories,
+                    key = { it.id }
+                ) { category ->
+                    val isSelected = category.id == selectedCategoryId
+                    CategoryGridItem(
+                        category = category,
+                        isSelected = isSelected,
+                        onClick = { onCategorySelected(category.id) }
+                    )
+                }
+                item {
+                    CategoryGridItem(
+                        name = "Nuevo",
+                        icon = Icons.Default.Add,
+                        iconColor = TextGray,
+                        isDashed = true,
+                        onClick = onAddNew
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+fun CategoryGridItem(
+    category: CategoryEntity? = null,
+    name: String = "",
+    icon: ImageVector? = null,
+    iconColor: Color = ActiveGold,
+    isSelected: Boolean = false,
+    isDashed: Boolean = false,
+    onClick: () -> Unit
+) {
+    val finalName = category?.name ?: name
+    val finalIcon = category?.let { getCategoryIcon(it.icon ?: "Category") } ?: icon ?: Icons.Default.Category
+    val finalIconColor = category?.color?.let { try { Color(android.graphics.Color.parseColor(it)) } catch(e: Exception) { ActiveGold } } ?: iconColor
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
         Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isEgreso) ActiveGold else Color.Transparent)
-                .clickable { onTypeSelected("egreso") },
+                .size(64.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SurfaceDark)
+                .then(
+                    if (isSelected) Modifier.border(2.dp, ActiveGold, RoundedCornerShape(16.dp)) 
+                    else if (isDashed) Modifier.border(1.dp, TextGray.copy(alpha = 0.5f), RoundedCornerShape(16.dp)) // Dash not easy in modifiers, border is fine
+                    else Modifier
+                ),
             contentAlignment = Alignment.Center
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    Icons.Default.TrendingDown,
-                    contentDescription = null,
-                    tint = if (isEgreso) Color.Black else Color(0xFFEF4444)
-                )
-                Text(
-                    "Gasto",
-                    color = if (isEgreso) Color.Black else Color(0xFFEF4444),
-                    fontWeight = FontWeight.SemiBold
-                )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(finalIconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(finalIcon, contentDescription = null, tint = finalIconColor, modifier = Modifier.size(24.dp))
             }
         }
-        
-        // Ingreso
-        val isIngreso = selectedType == "ingreso"
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isIngreso) ActiveGold else Color.Transparent)
-                .clickable { onTypeSelected("ingreso") },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    Icons.Default.TrendingUp,
-                    contentDescription = null,
-                    tint = if (isIngreso) Color.Black else Color(0xFF2D9F24)
-                )
-                Text(
-                    "Ingreso",
-                    color = if (isIngreso) Color.Black else Color(0xFF2D9F24),
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = finalName,
+            color = if (isSelected) ActiveGold else Color.White,
+            fontSize = 12.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+        )
     }
 }
 
 @Composable
 fun DetailRow(
     icon: ImageVector,
+    iconColor: Color = TextGray,
     label: String,
     value: String,
-    showDivider: Boolean
+    showDivider: Boolean,
+    onClick: () -> Unit = {}
 ) {
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { }
+                .clickable { onClick() }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -397,7 +524,7 @@ fun DetailRow(
                     .background(Color(0xFF2C2C35), RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = TextGray)
+                Icon(icon, contentDescription = null, tint = iconColor)
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -408,11 +535,29 @@ fun DetailRow(
         }
         if (showDivider) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = 72.dp), // Indented divider
+                modifier = Modifier.padding(start = 72.dp),
                 thickness = 1.dp,
                 color = Color(0xFF2C2C35)
             )
         }
+    }
+}
+
+private fun getCategoryIcon(iconName: String): ImageVector {
+    val normalizedName = iconName.substringAfterLast('.')
+    return when (normalizedName) {
+        "Restaurant" -> Icons.Default.Restaurant
+        "DirectionsCar" -> Icons.Default.DirectionsCar
+        "ConfirmationNumber" -> Icons.Default.ConfirmationNumber
+        "MedicalServices" -> Icons.Default.MedicalServices
+        "Payments" -> Icons.Default.Payments
+        "Lightbulb" -> Icons.Default.Lightbulb
+        "Receipt" -> Icons.Default.Receipt
+        "ShoppingCart" -> Icons.Default.ShoppingCart
+        "Home" -> Icons.Default.Home
+        "FitnessCenter" -> Icons.Default.FitnessCenter
+        "Add" -> Icons.Default.Add
+        else -> Icons.Default.Category
     }
 }
 

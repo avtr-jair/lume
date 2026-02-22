@@ -1,5 +1,6 @@
 package com.example.lume.ui.navigation
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -14,6 +15,10 @@ import androidx.navigation.compose.rememberNavController
 import com.example.lume.ui.components.FinanceBottomBar
 import com.example.lume.ui.screens.dashboard.DashboardScreen
 import com.example.lume.ui.screens.receiver.ShareReceiverScreen
+import com.example.lume.ui.screens.placeholder.PlaceholderScreen
+import com.example.lume.ui.screens.profile.ProfileScreen
+import com.example.lume.ui.screens.categories.ManageCategoriesScreen
+import com.example.lume.ui.screens.categories.CreateCategoryScreen
 import android.net.Uri
 
 @Composable
@@ -26,20 +31,32 @@ fun AppNavigation(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Dashboard.route
 
+    val showBottomBar = currentRoute !in listOf(
+        Screen.Receiver.route,
+        Screen.ManageCategories.route,
+        Screen.CreateCategory.route
+    )
+
     Scaffold(
         bottomBar = {
-            FinanceBottomBar(
-                currentRoute = currentRoute,
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Screen.Dashboard.route) {
-                            saveState = true
+            AnimatedVisibility(
+                visible = showBottomBar,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            ) {
+                FinanceBottomBar(
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        navController.navigate(route) {
+                            popUpTo(Screen.Dashboard.route) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
-                }
-            )
+                )
+            }
         },
         // Make background explicitly dark to match theme
         containerColor = MaterialTheme.colorScheme.background
@@ -47,21 +64,31 @@ fun AppNavigation(
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(
+                top = innerPadding.calculateTopPadding()
+            )
         ) {
             composable(Screen.Dashboard.route) {
                 DashboardScreen(navController = navController)
             }
-            composable(Screen.Receiver.route) {
-                ShareReceiverScreen(uris = uris, onDone = onFinishReceiver)
+            composable(Screen.Receiver.route) { backStackEntry ->
+                val uris = backStackEntry.arguments?.getString("uris")?.split(",")?.map { Uri.parse(it) } ?: emptyList()
+                ShareReceiverScreen(
+                    uris = uris,
+                    onDone = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) }
+                )
             }
             // Placeholders
-            composable(Screen.Insights.route) { DashboardScreen(navController) }
-            composable(Screen.Gastos.route) { DashboardScreen(navController) }
-            composable(Screen.Perfil.route) { DashboardScreen(navController) }
-            composable(Screen.Scan.route) {
-                // Determine what Scan does. For now placeholder.
-                DashboardScreen(navController) 
+            composable(Screen.Insights.route) { PlaceholderScreen("Reportes") }
+            composable(Screen.Gastos.route) { PlaceholderScreen("Facturas") }
+            composable(Screen.Perfil.route) { ProfileScreen(navController = navController) }
+            composable(Screen.Scan.route) { PlaceholderScreen("Escanear") }
+            composable(Screen.ManageCategories.route) {
+                ManageCategoriesScreen(navController = navController)
+            }
+            composable(Screen.CreateCategory.route) {
+                CreateCategoryScreen(navController = navController)
             }
         }
     }

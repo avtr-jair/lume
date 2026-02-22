@@ -10,7 +10,6 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.lume.data.Category
 import com.example.lume.data.OcrResult
 import com.example.lume.data.TxFields
 import com.example.lume.data.db.LumeDatabase
@@ -53,49 +52,59 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
     private val db = LumeDatabase.getDatabase(application)
     private val transactionDao = db.transactionDao()
 
+    val categories = transactionDao.getAllCategories()
+
+    private val _selectedCategoryId = MutableStateFlow<String?>(null)
+    val selectedCategoryId: StateFlow<String?> = _selectedCategoryId.asStateFlow()
+
+    fun onCategorySelected(id: String) {
+        _selectedCategoryId.value = id
+    }
+
     fun processImage(uri: Uri) {
         viewModelScope.launch {
             _uiState.value = ShareReceiverUiState.Loading
             try {
                 val resolver = getApplication<Application>().contentResolver
-                // Run OCR and processing on IO thread
                 val result = withContext(Dispatchers.IO) {
                     val text = runOcr(resolver, uri)
                     val extractor = OcrStructuralExtractor()
                     val structuralResult = extractor.extract(text)
                     
-                    // Fetch categories from DB
                     val dbCategories = transactionDao.getCategoriesSnapshot()
-                    val categoryNames = if (dbCategories.isNotEmpty()) {
-                        dbCategories.map { it.name }
-                    } else {
-                        // Fallback in case seeding is still in progress
-                        listOf("Comida", "Transporte", "Entretenimiento", "Salud", "Finanzas", "Servicios", "Otros")
-                    }
+                    val categoryNames = dbCategories.map { it.name }
                     
                     val request = structuralResult.copy(categories = categoryNames)
 
-                    // Stage B: Send structural candidates + categories to backend
-                    try {
-                        Log.d("LumeNet", "Sending to Flask: $request")
-                        val classifiedFields = LumeClient.apiService.classifyTransaction(request)
-                        Log.d("LumeNet", "Received from Flask: $classifiedFields")
-                        OcrResult(text = text, fields = classifiedFields, category = Category.OTROS)
+                    val classifiedFields = try {
+                        LumeClient.apiService.classifyTransaction(request)
                     } catch (e: Exception) {
                         Log.e("LumeNet", "Stage B classification failed", e)
-                        // Fallback logic
-                        val fallbackFields = TxFields(
+                        TxFields(
                             amount = structuralResult.amount_candidates.maxOrNull(),
                             currency = if (text.contains("USD", ignoreCase = true)) "USD" else "MXN",
                             date = structuralResult.date_candidates.firstOrNull(),
                             merchant = structuralResult.text_lines.getOrNull(2) ?: "Unknown",
                             concept = structuralResult.text_lines.firstOrNull(),
                             category = "Otros",
-                            type = "egreso" // Defaulting to egreso for safety
+                            type = "egreso"
                         )
-                        OcrResult(text = text, fields = fallbackFields, category = Category.OTROS)
                     }
+
+                    // Map backend category name to DB entity
+                    val matchedCategory = dbCategories.find { 
+                        it.name.equals(classifiedFields.category, ignoreCase = true) 
+                    } ?: dbCategories.find { it.id == "otros" } ?: dbCategories.firstOrNull()
+
+                    OcrResult(
+                        text = text, 
+                        fields = classifiedFields, 
+                        selectedCategoryId = matchedCategory?.id ?: "otros",
+                        suggestedCategory = matchedCategory
+                    )
                 }
+                
+                _selectedCategoryId.value = result.selectedCategoryId
                 _uiState.value = ShareReceiverUiState.Success(result)
             } catch (e: Exception) {
                 _uiState.value = ShareReceiverUiState.Error("Failed to process image: ${e.message}")
@@ -105,11 +114,8 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
 
     private suspend fun runOcr(resolver: ContentResolver, uri: Uri): String {
         val image = InputImage.fromBitmap(loadBitmap(resolver, uri), 0)
-        val recognizer = TextRecognition.getClient(
-            TextRecognizerOptions.DEFAULT_OPTIONS
-        )
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val result = recognizer.process(image).await()
-        Log.d("OCR", result.text)
         return result.text
     }
 
@@ -138,7 +144,7 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
                     dateIso = result.fields.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
                     merchant = result.fields.merchant,
                     concept = result.fields.concept,
-                    categoryId = "otros", // Default for now
+                    categoryId = _selectedCategoryId.value ?: "otros",
                     accountId = null,
                     type = type,
                     isSubscription = isSubscription,
@@ -148,7 +154,6 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
                     transactionDao.insertTransaction(transaction)
                 }
                 _saveSuccess.emit(Unit)
-                Log.d("LumeDB", "Transaction saved: ${transaction.id}")
             } catch (e: Exception) {
                 Log.e("LumeDB", "Failed to save transaction", e)
             }

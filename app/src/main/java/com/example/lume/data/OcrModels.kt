@@ -3,6 +3,8 @@ package com.example.lume.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+import com.example.lume.data.db.CategoryEntity
+
 @Serializable
 data class TxFields(
     @SerialName("amount") val amount: Double?,
@@ -16,7 +18,12 @@ data class TxFields(
     @SerialName("is_subscription") val is_subscription: Boolean = false
 )
 
-data class OcrResult(val text: String, val fields: TxFields, val category: Category)
+data class OcrResult(
+    val text: String,
+    val fields: TxFields,
+    val selectedCategoryId: String,
+    val suggestedCategory: CategoryEntity? = null
+)
 
 @Serializable
 data class StructuralOcrResult(
@@ -25,5 +32,3 @@ data class StructuralOcrResult(
     val text_lines: List<String>,
     val categories: List<String>
 )
-
-enum class Category { COMIDA, TRANSPORTE, ENTRETENIMIENTO, SALUD, FINANZAS, SERVICIOS, OTROS }
