@@ -13,18 +13,27 @@ import androidx.lifecycle.viewModelScope
 import com.example.lume.data.Category
 import com.example.lume.data.OcrResult
 import com.example.lume.data.TxFields
+import com.example.lume.data.db.LumeDatabase
+import com.example.lume.data.db.TransactionEntity
 import com.example.lume.network.LumeClient
 import com.example.lume.processing.OcrStructuralExtractor
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 sealed class ShareReceiverUiState {
     object Idle : ShareReceiverUiState()
@@ -38,6 +47,12 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
     private val _uiState = MutableStateFlow<ShareReceiverUiState>(ShareReceiverUiState.Idle)
     val uiState: StateFlow<ShareReceiverUiState> = _uiState.asStateFlow()
 
+    private val _saveSuccess = MutableSharedFlow<Unit>()
+    val saveSuccess: SharedFlow<Unit> = _saveSuccess.asSharedFlow()
+
+    private val db = LumeDatabase.getDatabase(application)
+    private val transactionDao = db.transactionDao()
+
     fun processImage(uri: Uri) {
         viewModelScope.launch {
             _uiState.value = ShareReceiverUiState.Loading
@@ -49,13 +64,16 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
                     val extractor = OcrStructuralExtractor()
                     val structuralResult = extractor.extract(text)
                     
-                    // User's categories (or generic list as requested)
-                    val categories = listOf(
-                        "Comida", "Transporte", "Entretenimiento", 
-                        "Salud", "Finanzas", "Servicios", "Otros"
-                    )
+                    // Fetch categories from DB
+                    val dbCategories = transactionDao.getCategoriesSnapshot()
+                    val categoryNames = if (dbCategories.isNotEmpty()) {
+                        dbCategories.map { it.name }
+                    } else {
+                        // Fallback in case seeding is still in progress
+                        listOf("Comida", "Transporte", "Entretenimiento", "Salud", "Finanzas", "Servicios", "Otros")
+                    }
                     
-                    val request = structuralResult.copy(categories = categories)
+                    val request = structuralResult.copy(categories = categoryNames)
 
                     // Stage B: Send structural candidates + categories to backend
                     try {
@@ -102,6 +120,38 @@ class ShareReceiverViewModel(application: Application) : AndroidViewModel(applic
         } else {
             @Suppress("DEPRECATION")
             MediaStore.Images.Media.getBitmap(resolver, uri)
+        }
+    }
+
+    fun saveTransaction(
+        result: OcrResult,
+        type: String,
+        isSubscription: Boolean,
+        note: String?
+    ) {
+        viewModelScope.launch {
+            try {
+                val transaction = TransactionEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    amount = result.fields.amount ?: 0.0,
+                    currency = result.fields.currency ?: "MXN",
+                    dateIso = result.fields.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    merchant = result.fields.merchant,
+                    concept = result.fields.concept,
+                    categoryId = "otros", // Default for now
+                    accountId = null,
+                    type = type,
+                    isSubscription = isSubscription,
+                    note = note
+                )
+                withContext(Dispatchers.IO) {
+                    transactionDao.insertTransaction(transaction)
+                }
+                _saveSuccess.emit(Unit)
+                Log.d("LumeDB", "Transaction saved: ${transaction.id}")
+            } catch (e: Exception) {
+                Log.e("LumeDB", "Failed to save transaction", e)
+            }
         }
     }
 

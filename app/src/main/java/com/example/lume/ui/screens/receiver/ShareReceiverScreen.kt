@@ -1,6 +1,7 @@
 package com.example.lume.ui.screens.receiver
 
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -41,7 +42,13 @@ fun ShareReceiverScreen(
     onDone: () -> Unit,
     viewModel: ShareReceiverViewModel = viewModel()
 ) {
-    // Top Bar is part of the custom design now, or we can use Scaffold topBar.
+    LaunchedEffect(Unit) {
+        viewModel.saveSuccess.collect {
+            onDone()
+        }
+    }
+
+    // Top Bar is part of the custom design now
     // The design shows "Revisar Transacción" and a close button.
     
     Scaffold(
@@ -69,7 +76,7 @@ fun ShareReceiverScreen(
             ) {
                 items(uris) { uri ->
                     TransactionReviewCard(uri = uri, viewModel = viewModel)
-                    Spacer(modifier = Modifier.height(24.dp))
+                    //Spacer(modifier = Modifier.height(24.dp))
                 }
             }
         }
@@ -131,7 +138,7 @@ fun TransactionReviewCard(
             }
             is ShareReceiverUiState.Success -> {
                 val result = (uiState as ShareReceiverUiState.Success).result
-                TransactionForm(result)
+                TransactionForm(result, viewModel)
             }
             else -> {}
         }
@@ -139,7 +146,11 @@ fun TransactionReviewCard(
 }
 
 @Composable
-fun TransactionForm(result: OcrResult) {
+fun TransactionForm(result: OcrResult, viewModel: ShareReceiverViewModel) {
+    var transactionType by remember { mutableStateOf(result.fields.type ?: "egreso") }
+    var isSubscription by remember { mutableStateOf(result.fields.is_subscription) }
+    var note by remember { mutableStateOf("") }
+
     val amount = result.fields.amount ?: 0.0
     val currency = result.fields.currency ?: "MXN"
     // Format amount
@@ -187,7 +198,10 @@ fun TransactionForm(result: OcrResult) {
     }
 
     // Type Switch (Gasto / Ingreso)
-    TransactionTypeSwitch()
+    TransactionTypeSwitch(
+        selectedType = transactionType,
+        onTypeSelected = { transactionType = it }
+    )
 
     // Details Section
     Text(
@@ -248,8 +262,8 @@ fun TransactionForm(result: OcrResult) {
             }
         }
         Switch(
-            checked = false,
-            onCheckedChange = {},
+            checked = isSubscription,
+            onCheckedChange = { isSubscription = it },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.Black,
                 checkedTrackColor = ActiveGold,
@@ -260,22 +274,29 @@ fun TransactionForm(result: OcrResult) {
     }
 
     // Note Input
-    Box(
+    OutlinedTextField(
+        value = note,
+        onValueChange = { note = it },
         modifier = Modifier
             .fillMaxWidth()
-            .height(100.dp)
-            .background(SurfaceDark, RoundedCornerShape(16.dp))
-            .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Default.Notes, contentDescription = null, tint = TextGray)
-            Text("Agregar una nota sobre esta transacción...", color = TextGray)
-        }
-    }
+            .height(100.dp),
+        placeholder = { Text("Agregar una nota sobre esta transacción...", color = TextGray) },
+        leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = TextGray) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            focusedContainerColor = SurfaceDark,
+            unfocusedContainerColor = SurfaceDark,
+            cursorColor = ActiveGold
+        ),
+        shape = RoundedCornerShape(16.dp)
+    )
 
     // Confirm Button
     Button(
-        onClick = {},
+        onClick = {
+            viewModel.saveTransaction(result, transactionType, isSubscription, note)
+        },
         colors = ButtonDefaults.buttonColors(containerColor = ActiveGold),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
@@ -292,7 +313,10 @@ fun TransactionForm(result: OcrResult) {
 }
 
 @Composable
-fun TransactionTypeSwitch() {
+fun TransactionTypeSwitch(
+    selectedType: String,
+    onTypeSelected: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -300,32 +324,53 @@ fun TransactionTypeSwitch() {
             .background(SurfaceDark, RoundedCornerShape(12.dp))
             .padding(4.dp)
     ) {
-        // Gasto (Selected)
+        // Gasto (egreso)
+        val isEgreso = selectedType == "egreso"
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(Color.Transparent, RoundedCornerShape(10.dp)), // Deselected style
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isEgreso) ActiveGold else Color.Transparent)
+                .clickable { onTypeSelected("egreso") },
             contentAlignment = Alignment.Center
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.TrendingDown, contentDescription = null, tint = Color(0xFFEF4444))
-                Text("Gasto", color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
+                Icon(
+                    Icons.Default.TrendingDown,
+                    contentDescription = null,
+                    tint = if (isEgreso) Color.Black else Color(0xFFEF4444)
+                )
+                Text(
+                    "Gasto",
+                    color = if (isEgreso) Color.Black else Color(0xFFEF4444),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
         
-        // Ingreso (Selected - Mocking the layout logic)
-        // Ideally state controls which one is highlighted
+        // Ingreso
+        val isIngreso = selectedType == "ingreso"
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(ActiveGold, RoundedCornerShape(10.dp)), // Selected style
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isIngreso) ActiveGold else Color.Transparent)
+                .clickable { onTypeSelected("ingreso") },
             contentAlignment = Alignment.Center
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color.Black)
-                Text("Ingreso", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                Icon(
+                    Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    tint = if (isIngreso) Color.Black else Color(0xFF2D9F24)
+                )
+                Text(
+                    "Ingreso",
+                    color = if (isIngreso) Color.Black else Color(0xFF2D9F24),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
