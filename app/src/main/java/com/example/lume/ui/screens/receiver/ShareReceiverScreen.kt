@@ -31,6 +31,8 @@ import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.ShareReceiverUiState
 import com.example.lume.viewmodel.ShareReceiverViewModel
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -217,7 +219,7 @@ fun TransactionForm(result: OcrResult) {
         DetailRow(
             icon = Icons.Outlined.CalendarMonth,
             label = "FECHA",
-            value = result.fields.dateIso ?: "Hoy, ${java.time.LocalDate.now()}",
+            value = result.fields.date ?: "Hoy, ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())}",
             showDivider = false
         )
     }
