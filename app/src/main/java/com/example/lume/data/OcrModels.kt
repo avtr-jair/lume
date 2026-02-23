@@ -15,14 +15,16 @@ data class TxFields(
     @SerialName("category") val category: String?,
     @SerialName("suggested_category") val suggested_category: String? = null,
     @SerialName("type") val type: String?, // "ingreso" or "egreso"
-    @SerialName("is_subscription") val is_subscription: Boolean = false
+    @SerialName("is_subscription") val is_subscription: Boolean = false,
+    @SerialName("msi") val msi: Int? = null
 )
 
 data class OcrResult(
     val text: String,
     val fields: TxFields,
     val selectedCategoryId: String,
-    val suggestedCategory: CategoryEntity? = null
+    val suggestedCategory: CategoryEntity? = null,
+    val suggestedAccountId: String? = null
 )
 
 @Serializable

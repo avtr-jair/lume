@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.lume.ui.navigation.Screen
 
 // Definición de tus colores exactos
 val BackgroundDark = Color(0xFF0B0B0F)
@@ -104,10 +105,10 @@ fun FinanceBottomBar(
                         onClick = { onNavigate("gastos") }
                     )
                     NavItem(
-                        icon = Icons.Default.PersonOutline,
-                        label = "Perfil",
-                        isSelected = currentRoute == "perfil",
-                        onClick = { onNavigate("perfil") }
+                        icon = Icons.Default.AccountBalanceWallet,
+                        label = "Cuentas",
+                        isSelected = currentRoute == com.example.lume.ui.navigation.Screen.ManageAccounts.route,
+                        onClick = { onNavigate(com.example.lume.ui.navigation.Screen.ManageAccounts.route) }
                     )
                 }
             }

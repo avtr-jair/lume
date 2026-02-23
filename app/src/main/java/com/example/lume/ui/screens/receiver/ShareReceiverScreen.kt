@@ -42,6 +42,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import com.example.lume.data.db.CategoryEntity
+import com.example.lume.data.db.AccountWithType
+import android.app.Activity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.SideEffect
+import androidx.core.view.WindowInsetsControllerCompat
+import com.example.lume.data.db.AccountEntity
 import com.example.lume.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,7 +59,8 @@ fun ShareReceiverScreen(
     viewModel: ShareReceiverViewModel = viewModel()
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var showBottomSheet by remember { mutableStateOf(false) }
+    var showCategorySheet by remember { mutableStateOf(false) }
+    var showAccountSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.saveSuccess.collect {
@@ -87,28 +94,48 @@ fun ShareReceiverScreen(
                     TransactionReviewCard(
                         uri = uri, 
                         viewModel = viewModel,
-                        onOpenSelector = { showBottomSheet = true }
+                        onOpenCategorySelector = { showCategorySheet = true },
+                        onOpenAccountSelector = { showAccountSheet = true }
                     )
                 }
             }
         }
     }
 
-    if (showBottomSheet) {
+    if (showCategorySheet) {
         val categories by viewModel.categories.collectAsState(initial = emptyList())
         val selectedCategoryId by viewModel.selectedCategoryId.collectAsState()
 
         CategorySelectorBottomSheet(
             categories = categories,
             selectedCategoryId = selectedCategoryId,
-            onClose = { showBottomSheet = false },
+            onClose = { showCategorySheet = false },
             onCategorySelected = {
                 viewModel.onCategorySelected(it)
-                showBottomSheet = false
+                showCategorySheet = false
             },
             onAddNew = {
-                showBottomSheet = false
+                showCategorySheet = false
                 onNavigate(Screen.CreateCategory.route)
+            }
+        )
+    }
+
+    if (showAccountSheet) {
+        val accounts by viewModel.accounts.collectAsState(initial = emptyList())
+        val selectedAccountId by viewModel.selectedAccountId.collectAsState()
+
+        AccountSelectorBottomSheet(
+            accounts = accounts,
+            selectedAccountId = selectedAccountId,
+            onClose = { showAccountSheet = false },
+            onAccountSelected = {
+                viewModel.onAccountSelected(it)
+                showAccountSheet = false
+            },
+            onAddNew = {
+                showAccountSheet = false
+                onNavigate(Screen.SelectAccountType.route)
             }
         )
     }
@@ -118,7 +145,8 @@ fun ShareReceiverScreen(
 fun TransactionReviewCard(
     uri: Uri,
     viewModel: ShareReceiverViewModel,
-    onOpenSelector: () -> Unit
+    onOpenCategorySelector: () -> Unit,
+    onOpenAccountSelector: () -> Unit
 ) {
     LaunchedEffect(uri) {
         viewModel.processImage(uri)
@@ -140,7 +168,7 @@ fun TransactionReviewCard(
             }
             is ShareReceiverUiState.Success -> {
                 val result = (uiState as ShareReceiverUiState.Success).result
-                TransactionForm(result, viewModel, onOpenSelector)
+                TransactionForm(result, viewModel, onOpenCategorySelector, onOpenAccountSelector)
             }
             else -> {}
         }
@@ -211,7 +239,8 @@ fun ReviewTopBar(onClose: () -> Unit) {
 fun TransactionForm(
     result: OcrResult, 
     viewModel: ShareReceiverViewModel,
-    onOpenSelector: () -> Unit
+    onOpenCategorySelector: () -> Unit,
+    onOpenAccountSelector: () -> Unit
 ) {
     var transactionType by remember { mutableStateOf(result.fields.type ?: "egreso") }
     var isSubscription by remember { mutableStateOf(result.fields.is_subscription) }
@@ -221,8 +250,18 @@ fun TransactionForm(
     val selectedId by viewModel.selectedCategoryId.collectAsState()
     val selectedCategory = remember(categories, selectedId) { categories.find { it.id == selectedId } }
 
-    val amount = result.fields.amount ?: 0.0
-    val formattedAmount = remember(amount) { NumberFormat.getCurrencyInstance(Locale.US).format(amount) }
+    val accounts by viewModel.accounts.collectAsState(initial = emptyList())
+    val selectedAccountId by viewModel.selectedAccountId.collectAsState()
+    val selectedAccountWithType = remember(accounts, selectedAccountId) { accounts.find { it.account.id == selectedAccountId } }
+
+    // Form State
+    var amountStr by remember { mutableStateOf(result.fields.amount?.let { if (it > 0) it.toString() else "" } ?: "") }
+    var msiStr by remember { mutableStateOf(result.fields.msi?.toString() ?: "") }
+    
+    val formattedAmount = remember(amountStr) { 
+        val currentAmount = amountStr.toDoubleOrNull() ?: 0.0
+        NumberFormat.getCurrencyInstance(Locale.US).format(currentAmount) 
+    }
 
     // OCR Detected Badge
     Box(
@@ -243,16 +282,19 @@ fun TransactionForm(
     }
 
     // Insight Chip (MI)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1E242E), RoundedCornerShape(12.dp))
-            .padding(12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF608BC1))
-            Text("3 Meses sin intereses detectados", color = Color(0xFF608BC1), fontWeight = FontWeight.Medium)
+    val msi = result.fields.msi
+    if (msi != null && msi > 0) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1E242E), RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF608BC1))
+                Text("$msi Meses sin intereses detectados", color = Color(0xFF608BC1), fontWeight = FontWeight.Medium)
+            }
         }
     }
 
@@ -266,6 +308,62 @@ fun TransactionForm(
         modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
     )
 
+    if (msi != null && msi > 0) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = amountStr,
+                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d{0,2}\$"))) amountStr = it },
+                modifier = Modifier.weight(1f),
+                label = { Text("Monto", color = TextGray) },
+                leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null, tint = TextGray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = ActiveGold
+                ),
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = msiStr,
+                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d{0,2}\$"))) msiStr = it },
+                modifier = Modifier.weight(1f),
+                label = { Text("Meses", color = TextGray) },
+                leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = TextGray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = ActiveGold
+                ),
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                singleLine = true
+            )
+        }
+    }
+
+    val accountColor = selectedAccountWithType?.account?.color?.let { 
+        try { Color(android.graphics.Color.parseColor(it)) } catch(e: Exception) { ActiveGold } 
+    } ?: ActiveGold
+    
+    val accountIcon = when (selectedAccountWithType?.type?.id) {
+        "CREDIT" -> Icons.Default.CreditCard
+        "SAVINGS" -> Icons.Default.Savings
+        "INVESTMENT" -> Icons.Default.ShowChart
+        "CASH" -> Icons.Default.Payments
+        else -> Icons.Default.AccountBalance
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -273,10 +371,12 @@ fun TransactionForm(
             .background(SurfaceDark)
     ) {
         DetailRow(
-            icon = Icons.Outlined.AccountBalanceWallet,
+            icon = accountIcon,
+            iconColor = accountColor,
             label = "CUENTA",
-            value = "BBVA Débito •••• 1234",
-            showDivider = true
+            value = selectedAccountWithType?.let { "${it.account.bankName} •••• ${it.account.last4}" } ?: "Seleccionar cuenta",
+            showDivider = true,
+            onClick = onOpenAccountSelector
         )
         DetailRow(
             icon = getCategoryIcon(selectedCategory?.icon ?: "Category"),
@@ -284,7 +384,7 @@ fun TransactionForm(
             label = "CATEGORÍA",
             value = selectedCategory?.name ?: "Otros",
             showDivider = true,
-            onClick = onOpenSelector
+            onClick = onOpenCategorySelector
         )
         DetailRow(
             icon = Icons.Outlined.CalendarMonth,
@@ -295,38 +395,40 @@ fun TransactionForm(
     }
 
     // Subscription Toggle
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SurfaceDark, RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(Color(0xFF2C2C35), RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFFA78BFA))
+    if (msi == null || msi <= 0) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SurfaceDark, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color(0xFF2C2C35), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFFA78BFA))
+                }
+                Column {
+                    Text("Suscripción", color = Color.White, fontWeight = FontWeight.Medium)
+                    Text("Repetir cada mes", color = TextGray, fontSize = 12.sp)
+                }
             }
-            Column {
-                Text("Suscripción", color = Color.White, fontWeight = FontWeight.Medium)
-                Text("Repetir cada mes", color = TextGray, fontSize = 12.sp)
-            }
-        }
-        Switch(
-            checked = isSubscription,
-            onCheckedChange = { isSubscription = it },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.Black,
-                checkedTrackColor = ActiveGold,
-                uncheckedThumbColor = TextGray,
-                uncheckedTrackColor = BackgroundDark
+            Switch(
+                checked = isSubscription,
+                onCheckedChange = { isSubscription = it },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = ActiveGold,
+                    uncheckedThumbColor = TextGray,
+                    uncheckedTrackColor = BackgroundDark
+                )
             )
-        )
+        }
     }
 
     OutlinedTextField(
@@ -346,7 +448,11 @@ fun TransactionForm(
     )
 
     Button(
-        onClick = { viewModel.saveTransaction(result, transactionType, isSubscription, note) },
+        onClick = { 
+            val editedAmount = amountStr.toDoubleOrNull() ?: 0.0
+            val editedMsi = msiStr.toIntOrNull()
+            viewModel.saveTransaction(result, transactionType, isSubscription, note, editedAmount, editedMsi) 
+        },
         colors = ButtonDefaults.buttonColors(containerColor = ActiveGold),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().height(56.dp)
@@ -543,6 +649,157 @@ fun DetailRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AccountSelectorBottomSheet(
+    accounts: List<com.example.lume.data.db.AccountWithType>,
+    selectedAccountId: String?,
+    onClose: () -> Unit,
+    onAccountSelected: (String) -> Unit,
+    onAddNew: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        containerColor = Color(0xFF16161D),
+        scrimColor = Color.Black.copy(alpha = 0.5f)
+    ) {
+        // Ensure system navigation bar stays dark
+        val view = LocalView.current
+        SideEffect {
+            var context = view.context
+            while (context is android.content.ContextWrapper) {
+                if (context is Activity) break
+                context = context.baseContext
+            }
+            val window = (context as? Activity)?.window
+            if (window != null) {
+                window.navigationBarColor = android.graphics.Color.BLACK
+                // Disable light navigation bar icons
+                WindowInsetsControllerCompat(window, view).isAppearanceLightNavigationBars = false
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Seleccionar Cuenta", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onClose, modifier = Modifier.background(SurfaceDark, CircleShape).size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.heightIn(max = 500.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                items(accounts) { accountWithType ->
+                    AccountSelectorItem(
+                        accountWithType = accountWithType,
+                        isSelected = accountWithType.account.id == selectedAccountId,
+                        onClick = { onAccountSelected(accountWithType.account.id) }
+                    )
+                }
+                
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(
+                                1.dp, 
+                                color = ActiveGold.copy(alpha = 0.3f), // Approximate dashed looks with low alpha or custom painter
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { onAddNew() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = ActiveGold, modifier = Modifier.size(20.dp))
+                            Text("Vincular nueva cuenta", color = ActiveGold, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+fun AccountSelectorItem(
+    accountWithType: com.example.lume.data.db.AccountWithType,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val account = accountWithType.account
+    val type = accountWithType.type
+    val accountColor = try { Color(android.graphics.Color.parseColor(account.color ?: "#B894FF")) } catch(e: Exception) { ActiveGold }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (isSelected) SurfaceDark else Color.Transparent)
+            .border(1.dp, if (isSelected) ActiveGold else Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(accountColor.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                when (type?.id) {
+                    "CREDIT" -> Icons.Default.CreditCard
+                    "SAVINGS" -> Icons.Default.Savings
+                    "INVESTMENT" -> Icons.Default.ShowChart
+                    "CASH" -> Icons.Default.Payments
+                    else -> Icons.Default.AccountBalance
+                },
+                contentDescription = null,
+                tint = accountColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(account.bankName, color = Color.White, fontWeight = FontWeight.SemiBold)
+            val balanceStr = if (type?.id == "CREDIT") {
+                val available = (account.creditLimit ?: 0.0) - account.balance
+                "${formatCurrency(available)} disp."
+            } else {
+                formatCurrency(account.balance)
+            }
+            Text("${type?.name ?: "Cuenta"} •••• ${account.last4} • $balanceStr", color = TextGray, fontSize = 12.sp)
+        }
+        
+        if (isSelected) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ActiveGold)
+        }
+    }
+}
+
 private fun getCategoryIcon(iconName: String): ImageVector {
     val normalizedName = iconName.substringAfterLast('.')
     return when (normalizedName) {
@@ -562,3 +819,7 @@ private fun getCategoryIcon(iconName: String): ImageVector {
 }
 
 fun String.capitalize() = replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+
+private fun formatCurrency(amount: Double): String {
+    return NumberFormat.getCurrencyInstance(Locale.US).format(amount)
+}

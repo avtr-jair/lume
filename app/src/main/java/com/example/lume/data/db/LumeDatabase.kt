@@ -8,8 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [TransactionEntity::class, CategoryEntity::class, AccountEntity::class],
-    version = 3,
+    entities = [TransactionEntity::class, CategoryEntity::class, AccountEntity::class, DeferredPlanEntity::class, AccountTypeEntity::class],
+    version = 5,
     exportSchema = false
 )
 abstract class LumeDatabase : RoomDatabase() {
@@ -39,24 +39,42 @@ abstract class LumeDatabase : RoomDatabase() {
     private class LumeDatabaseCallback(
         private val scope: CoroutineScope
     ) : RoomDatabase.Callback() {
+        override fun onCreate(db: SupportSQLiteDatabase) {
+            super.onCreate(db)
+            seedDatabase(db)
+        }
+
         override fun onOpen(db: SupportSQLiteDatabase) {
             super.onOpen(db)
-            INSTANCE?.let { database ->
-                scope.launch {
-                    val catDao = database.transactionDao()
-                    val count = catDao.getCategoriesSnapshot().size
-                    if (count == 0) {
-                        val defaultCategories = listOf(
-                            CategoryEntity("comida", "Comida", "Restaurant", "#FACC15", 0),
-                            CategoryEntity("transporte", "Transporte", "DirectionsCar", "#60A5FA", 1),
-                            CategoryEntity("entretenimiento", "Entretenimiento", "ConfirmationNumber", "#A78BFA", 2),
-                            CategoryEntity("salud", "Salud", "MedicalServices", "#F87171", 3),
-                            CategoryEntity("finanzas", "Finanzas", "Payments", "#34D399", 4),
-                            CategoryEntity("servicios", "Servicios", "Lightbulb", "#FB923C", 5),
-                            CategoryEntity("otros", "Otros", "Category", "#94A3B8", 6)
-                        )
-                        defaultCategories.forEach { catDao.insertCategory(it) }
-                    }
+            seedDatabase(db)
+        }
+
+        private fun seedDatabase(db: SupportSQLiteDatabase) {
+            scope.launch {
+                // 1. Seed Categories (using INSERT OR IGNORE)
+                val categories = listOf(
+                    "('comida', 'Comida', 'Restaurant', '#FACC15', 0)",
+                    "('transporte', 'Transporte', 'DirectionsCar', '#60A5FA', 1)",
+                    "('entretenimiento', 'Entretenimiento', 'ConfirmationNumber', '#A78BFA', 2)",
+                    "('salud', 'Salud', 'MedicalServices', '#F87171', 3)",
+                    "('finanzas', 'Finanzas', 'Payments', '#34D399', 4)",
+                    "('servicios', 'Servicios', 'Lightbulb', '#FB923C', 5)",
+                    "('otros', 'Otros', 'Category', '#94A3B8', 6)"
+                )
+                categories.forEach { values ->
+                    db.execSQL("INSERT OR IGNORE INTO categories (id, name, icon, color, displayOrder) VALUES $values")
+                }
+
+                // 2. Seed Account Types (using INSERT OR IGNORE)
+                val accountTypes = listOf(
+                    "('DEBIT', 'Débito / Nómina', 'AccountBalance')",
+                    "('CREDIT', 'Tarjeta de Crédito', 'CreditCard')",
+                    "('SAVINGS', 'Ahorro / Apartados', 'Savings')",
+                    "('INVESTMENT', 'Inversión', 'ShowChart')",
+                    "('CASH', 'Efectivo', 'Payments')"
+                )
+                accountTypes.forEach { values ->
+                    db.execSQL("INSERT OR IGNORE INTO account_types (id, name, icon) VALUES $values")
                 }
             }
         }

@@ -19,6 +19,9 @@ import com.example.lume.ui.screens.placeholder.PlaceholderScreen
 import com.example.lume.ui.screens.profile.ProfileScreen
 import com.example.lume.ui.screens.categories.ManageCategoriesScreen
 import com.example.lume.ui.screens.categories.CreateCategoryScreen
+import com.example.lume.ui.screens.accounts.AccountsScreen
+import com.example.lume.ui.screens.accounts.CreateAccountScreen
+import com.example.lume.ui.screens.accounts.SelectAccountTypeScreen
 import android.net.Uri
 
 @Composable
@@ -34,7 +37,9 @@ fun AppNavigation(
     val showBottomBar = currentRoute !in listOf(
         Screen.Receiver.route,
         Screen.ManageCategories.route,
-        Screen.CreateCategory.route
+        Screen.CreateCategory.route,
+        Screen.SelectAccountType.route,
+        Screen.CreateAccount.route
     )
 
     Scaffold(
@@ -83,6 +88,16 @@ fun AppNavigation(
             composable(Screen.Insights.route) { PlaceholderScreen("Reportes") }
             composable(Screen.Gastos.route) { PlaceholderScreen("Facturas") }
             composable(Screen.Perfil.route) { ProfileScreen(navController = navController) }
+            composable(Screen.ManageAccounts.route) {
+                AccountsScreen(navController = navController)
+            }
+            composable(Screen.SelectAccountType.route) {
+                SelectAccountTypeScreen(navController = navController)
+            }
+            composable(Screen.CreateAccount.route) { backStackEntry ->
+                val typeId = backStackEntry.arguments?.getString("typeId") ?: "DEBIT"
+                CreateAccountScreen(navController = navController, typeId = typeId)
+            }
             composable(Screen.Scan.route) { PlaceholderScreen("Escanear") }
             composable(Screen.ManageCategories.route) {
                 ManageCategoriesScreen(navController = navController)

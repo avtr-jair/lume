@@ -14,13 +14,63 @@ data class CategoryEntity(
 )
 
 @Entity(
-    tableName = "accounts"
+    tableName = "account_types"
+)
+data class AccountTypeEntity(
+    @PrimaryKey val id: String, // "DEBIT", "CREDIT", "SAVINGS", "INVESTMENT", "CASH"
+    val name: String,
+    val icon: String
+)
+
+@Entity(
+    tableName = "accounts",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountTypeEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountTypeId"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
+    indices = [Index("accountTypeId")]
 )
 data class AccountEntity(
     @PrimaryKey val id: String,
     val bankName: String,
     val last4: String,
-    val label: String? = null
+    val label: String? = null,
+    val accountTypeId: String,      // Linking to AccountTypeEntity
+    val balance: Double = 0.0,       // Current liquid balance
+    
+    // TDC Specific
+    val closingDay: Int? = null,
+    val dueDay: Int? = null,
+    val creditLimit: Double? = null,
+    
+    // Savings Specific
+    val targetAmount: Double? = null,
+    val yieldRate: Double? = null,
+    
+    // Investment Specific
+    val initialInvestment: Double? = null,
+    val currentValue: Double? = null,
+    val assetType: String? = null,   // "Acciones", "Cripto", etc.
+    
+    val color: String? = null        // Personalization
+)
+
+@Entity(
+    tableName = "deferred_plans"
+)
+data class DeferredPlanEntity(
+    @PrimaryKey val id: String,
+    val transactionId: String, // Original transaction
+    val totalAmount: Double,
+    val totalInstallments: Int,
+    val monthlyPayment: Double, // Principal + Interest
+    val interestRate: Double? = null,
+    val startDateIso: String,
+    val status: String = "ACTIVE" // "ACTIVE", "COMPLETED", "CANCELLED"
 )
 
 @Entity(
@@ -53,6 +103,7 @@ data class TransactionEntity(
     val type: String, // "ingreso" or "egreso"
     val isSubscription: Boolean,
     val note: String?,
+    val deferredPlanId: String? = null, // Link to DeferredPlanEntity if applicable
     val createdAt: Long = System.currentTimeMillis()
 )
 

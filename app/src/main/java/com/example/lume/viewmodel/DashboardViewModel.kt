@@ -1,12 +1,10 @@
 package com.example.lume.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.lume.data.db.CategoryEntity
-import com.example.lume.data.db.LumeDatabase
-import com.example.lume.data.db.TransactionEntity
-import com.example.lume.data.db.TransactionWithCategory
+import com.example.lume.data.db.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -17,10 +15,32 @@ data class CategorySpend(
     val amount: Double
 )
 
+data class TdcReminder(
+    val bankName: String,
+    val last4: String,
+    val closingDay: Int,
+    val daysLeft: Int
+)
+
+data class DeferredPaymentItem(
+    val id: String,
+    val concept: String,
+    val categoryIcon: String,
+    val categoryColor: String,
+    val currentMonth: Int,
+    val totalMonths: Int,
+    val monthlyPayment: Double,
+    val paymentDueDate: String
+)
+
 data class DashboardUiState(
-    val totalBalance: Double = 0.0,
+    val totalBalance: Double = 0.0, // Liquid Assets (Debit + Cash)
     val totalIncome: Double = 0.0,
     val totalExpenses: Double = 0.0,
+    val totalDebt: Double = 0.0,    // TDC Liabilities + Deferred Plans
+    val totalInvestments: Double = 0.0, // Investment Current Value
+    val tdcReminders: List<TdcReminder> = emptyList(),
+    val deferredPayments: List<DeferredPaymentItem> = emptyList(),
     val recentTransactions: List<TransactionWithCategory> = emptyList(),
     val categoriesBreakdown: List<CategorySpend> = emptyList(),
     val isSensitiveDataVisible: Boolean = true,
@@ -41,28 +61,136 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun observeTransactions() {
         viewModelScope.launch {
-            transactionDao.getAllTransactionsWithCategory().collect { transactionsWithCat ->
-                // Move expensive processing to background thread
-                val newState = withContext(Dispatchers.Default) {
-                    val income = transactionsWithCat.filter { it.transaction.type == "ingreso" }.sumOf { it.transaction.amount }
-                    val expenses = transactionsWithCat.filter { it.transaction.type == "egreso" }.sumOf { it.transaction.amount }
+            combine(
+                transactionDao.getAllTransactionsWithCategory(),
+                transactionDao.getActiveDeferredPlans(),
+                transactionDao.getAllAccountsWithType()
+            ) { transactions, deferredPlans, accountsWithType ->
+                withContext(Dispatchers.Default) {
+                    val calendar = java.util.Calendar.getInstance()
+                    val today = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+
+                    // 1. Calculate Virtual Transactions from Deferred Plans
+                    val virtualInstallments = deferredPlans.mapNotNull { plan ->
+                        val originalTxWithCat = transactions.find { it.transaction.id == plan.transactionId }
+                        if (originalTxWithCat?.category == null) return@mapNotNull null
+                        
+                        TransactionWithCategory(
+                            transaction = TransactionEntity(
+                                id = "virtual_${plan.id}",
+                                amount = plan.monthlyPayment,
+                                currency = "MXN",
+                                dateIso = "", // Virtual
+                                merchant = "Plan Diferido",
+                                concept = "Mensualidad",
+                                categoryId = originalTxWithCat.category.id,
+                                accountId = null,
+                                type = "egreso",
+                                isSubscription = false,
+                                note = "Pago automático"
+                            ),
+                            category = originalTxWithCat.category
+                        )
+                    }
+
+                    // 2. TDC Reminders
+                    val reminders = accountsWithType.filter { 
+                        it.type?.id == "CREDIT" && it.account.closingDay != null 
+                    }.mapNotNull { accWithType ->
+                        val acc = accWithType.account
+                        val closingDay = acc.closingDay!!
+                        val diff = closingDay - today
+                        if (diff in 0..3) {
+                            TdcReminder(acc.bankName, acc.last4, closingDay, diff)
+                        } else null
+                    }
+
+                    // 3. Balance Calculations
+                    val liquidBalance = accountsWithType.filter { 
+                        it.type?.id == "DEBIT" || it.type?.id == "CASH" || it.type?.id == "SAVINGS"
+                    }.sumOf { it.account.balance }
+
+                    val investmentsValue = accountsWithType.filter { 
+                        it.type?.id == "INVESTMENT" 
+                    }.sumOf { it.account.currentValue ?: 0.0 }
+
+                    val tdcDebt = accountsWithType.filter { 
+                        it.type?.id == "CREDIT" 
+                    }.sumOf { it.account.balance } // Assuming balance store current debt for TDC
+
+                    // Deduplicate Expenses: Exclude the massive parent transactions of Deferred Plans
+                    val deferredTxIds = deferredPlans.map { it.transactionId }.toSet()
+                    val regularExpenses = transactions.filter { 
+                        it.transaction.type == "egreso" && it.transaction.id !in deferredTxIds 
+                    }
+
+                    val allExpensesList = regularExpenses + virtualInstallments
+                    val income = transactions.filter { it.transaction.type == "ingreso" }.sumOf { it.transaction.amount }
+                    val expenses = allExpensesList.sumOf { it.transaction.amount }
                     
-                    val breakdown = transactionsWithCat
-                        .filter { it.transaction.type == "egreso" && it.category != null }
-                        .groupBy { it.category!! }
-                        .map { (category, list) -> CategorySpend(category, list.sumOf { it.transaction.amount }) }
+                    val breakdown = allExpensesList
+                        .filter { it.category != null }
+                        .groupBy { it.category!!.id } // Group by ID to merge identical categories with different references
+                        .map { (categoryId, list) -> 
+                            // Use the first category instance found for this ID
+                            CategorySpend(list.first().category!!, list.sumOf { it.transaction.amount }) 
+                        }
                         .sortedByDescending { it.amount }
 
+                    // We do not add totalPlannedDebt to totalDebt because the credit card balance ALREADY includes it
+                    val totalDebt = tdcDebt
+
+                    // 4. Map Deferred Payments for UI
+                    val deferredPaymentItems = deferredPlans.mapNotNull { plan ->
+                        val originalTxWithCat = transactions.find { it.transaction.id == plan.transactionId } ?: return@mapNotNull null
+                        val originalTx = originalTxWithCat.transaction
+                        val category = originalTxWithCat.category
+                        
+                        val account = accountsWithType.find { it.account.id == originalTx.accountId }?.account
+                        
+                        val startYear = plan.startDateIso.take(4).toIntOrNull() ?: calendar.get(java.util.Calendar.YEAR)
+                        val startMonth = plan.startDateIso.drop(5).take(2).toIntOrNull() ?: (calendar.get(java.util.Calendar.MONTH) + 1)
+                        val currentYear = calendar.get(java.util.Calendar.YEAR)
+                        val currentMonthNum = calendar.get(java.util.Calendar.MONTH) + 1
+                        
+                        val monthsPassed = (currentYear - startYear) * 12 + (currentMonthNum - startMonth)
+                        val currentInstallment = (monthsPassed + 1).coerceIn(1, plan.totalInstallments)
+                        
+                        val accountLabel = account?.let { "${it.bankName} ${it.last4}" } ?: "Cuenta"
+                        val paymentDueDateStr = account?.dueDay?.let { dueDay ->
+                            val currentMonthStr = currentMonthNum.toString().padStart(2, '0')
+                            val dueDayStr = dueDay.toString().padStart(2, '0')
+                            "$accountLabel - $currentMonthStr/$dueDayStr"
+                        } ?: "$accountLabel - Este mes"
+
+                        DeferredPaymentItem(
+                            id = plan.id,
+                            concept = originalTx.concept ?: originalTx.merchant ?: "Compra Diferida",
+                            categoryIcon = category?.icon ?: "Category",
+                            categoryColor = category?.color ?: "#B894FF",
+                            currentMonth = currentInstallment,
+                            totalMonths = plan.totalInstallments,
+                            monthlyPayment = plan.monthlyPayment,
+                            paymentDueDate = paymentDueDateStr
+                        )
+                    }
+
                     _uiState.value.copy(
-                        totalBalance = income - expenses,
+                        totalBalance = liquidBalance,
                         totalIncome = income,
                         totalExpenses = expenses,
-                        recentTransactions = transactionsWithCat.take(10),
+                        totalDebt = totalDebt,
+                        totalInvestments = investmentsValue,
+                        tdcReminders = reminders,
+                        deferredPayments = deferredPaymentItems,
+                        recentTransactions = transactions.sortedByDescending { it.transaction.createdAt }.take(6),
                         categoriesBreakdown = breakdown,
                         isLoading = false
                     )
                 }
+            }.collect { newState ->
                 _uiState.value = newState
+                Log.d("DashboardVM", "State updated with ${newState.recentTransactions.size} transactions")
             }
         }
     }

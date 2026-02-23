@@ -56,7 +56,8 @@ fun CreateCategoryScreen(
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BackgroundDark),
+                windowInsets = WindowInsets(0)
             )
         },
         bottomBar = {

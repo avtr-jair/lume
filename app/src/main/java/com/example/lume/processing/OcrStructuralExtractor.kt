@@ -28,10 +28,16 @@ class OcrStructuralExtractor {
     fun normalizeText(text: String): String {
         val temp = Normalizer.normalize(text, Normalizer.Form.NFD)
         val withoutAccents = temp.replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
-        return withoutAccents.lowercase()
+        var normalized = withoutAccents.lowercase()
             .replace(Regex("[ \\t]+"), " ")
             .replace(Regex("\\r?\\n"), "\n")
             .trim()
+            
+        // Fix missing decimals in MSI formats (e.g., Mercado Libre "12x $ 12676" -> "12x $ 126.76")
+        val missingDotPattern = Regex("""(\b\d{1,2}x\s*\$\s*)(?<!\.)(\d+)(\d{2})(?!\.)\b""")
+        normalized = missingDotPattern.replace(normalized, "$1$2.$3")
+        
+        return normalized
     }
 
     /**

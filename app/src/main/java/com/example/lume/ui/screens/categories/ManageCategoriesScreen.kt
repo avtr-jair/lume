@@ -132,7 +132,8 @@ fun CategoriesTopBar(onBackClick: () -> Unit) {
         },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = BackgroundDark
-        )
+        ),
+        windowInsets = WindowInsets(0)
     )
 }
 

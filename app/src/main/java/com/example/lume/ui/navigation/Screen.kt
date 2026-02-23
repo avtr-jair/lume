@@ -9,4 +9,7 @@ sealed class Screen(val route: String) {
     object Scan : Screen("scan")
     object ManageCategories : Screen("manage_categories")
     object CreateCategory : Screen("create_category")
+    object ManageAccounts : Screen("accounts")
+    object SelectAccountType : Screen("select_account_type")
+    object CreateAccount : Screen("create_account/{typeId}")
 }
